@@ -17,3 +17,14 @@ El TP se divide en dos problemas independientes, resueltos con técnicas que vim
 - **[Problema 1](README_problema_1.md)** — Detección y clasificación de pastillas sobre una cinta transportadora industrial.
 - **[Problema 2](README_problema_2.md)** — Detección de placas patente y segmentación de sus caracteres a partir de imágenes de vehículos.
 
+### Ejecutar cada ejercicio con uv (porque pip en una pc nos estaba dando error de instalación)
+
+```bash
+uv sync
+
+# Ejercicio 1 - pastillas
+uv run --directory ejercicio_1 python pastillas.py
+
+# Ejercicio 2 - patentes
+uv run --directory ejercicio_2 python patentes.py
+```
