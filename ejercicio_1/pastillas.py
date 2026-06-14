@@ -113,11 +113,91 @@ def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=
     return pastillas, cleaned
 
 
+def _features_forma(mask):
+    """
+    Ayuda para calcular las caracteristicas de la forma de la pastilla.
+    """
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not cnts:
+        return None
+    cnt = max(cnts, key=cv2.contourArea)
+    area = cv2.contourArea(cnt)
+    per = cv2.arcLength(cnt, True)
+    circularity = 4 * np.pi * area / (per * per + 1e-6)
+
+    (cx, cy), (mw, mh), ang = cv2.minAreaRect(cnt)
+    if mw < 1 or mh < 1:
+        return None
+    aspect = max(mw, mh) / min(mw, mh)
+
+    x, y, w, h = cv2.boundingRect(cnt)
+    extent = area / (w * h + 1e-6)
+
+    return {'circularity': circularity, 'aspect': aspect, 'extent': extent}
+
+
+def _features_color(img_hsv, mask):
+    """
+    Ayuda para calcular las caracteristicas del color de la pastilla.
+    """
+    mean = cv2.mean(img_hsv, mask=mask)  # (H, S, V, 0)
+    h_mean, s_mean, v_mean = mean[0], mean[1], mean[2]
+
+    # Obtenemos los porcentajes de píxeles por color dentro del blob
+    H = img_hsv[:, :, 0]
+    S = img_hsv[:, :, 1]
+    V = img_hsv[:, :, 2]
+    m = mask > 0
+
+    # Definimos los rangos del color
+    blue   = ((H >= 90)  & (H <= 135) & (S >= 60)) & m
+    yellow = ((H >= 15)  & (H <= 40)  & (S >= 50)) & m
+    pink   = (((H >= 150) | (H <= 10))& (S >= 30)) & m
+    white  = ((S < 50) & (V > 130)) & m
+
+    n = max(1, m.sum())
+    return {
+        'H': h_mean, 'S': s_mean, 'V': v_mean,
+        'pct_blue':   blue.sum()   / n,
+        'pct_yellow': yellow.sum() / n,
+        'pct_pink':   pink.sum()   / n,
+        'pct_white':  white.sum()  / n,
+    }
+
+
+def clasificar_pastilla(mask, img_hsv):
+    """
+    Punto C: Clasifica la pastilla segun sus caracteristicas.
+    """
+    # Tenemos dos caracteristicas que nos interesan: forma y color, sino obtenemos una forma conocida devolvemos XX
+    f = _features_forma(mask)
+    c = _features_color(img_hsv, mask)
+    if f is None:
+        return 'XX'
+
+    # En base a la forma, después vemos el color
+    es_capsula = (f['aspect'] >= 1.7) or (f['circularity'] < 0.65)
+    if es_capsula:
+        if c['pct_blue'] > 0.05:
+            return 'CB' # Capsula bicolor azul-blanca
+        if c['pct_yellow'] > 0.20:
+            return 'CA' # Capsula amarilla
+        return 'CB'
+
+    if f['circularity'] < 0.88:
+        return 'CC' # Cuadrada blanca
+
+    if c['pct_pink'] > 0.15:
+        return 'RR' # Redonda rosa
+    return 'RB' # Redonda blanca
+
+
 if __name__ == "__main__":
     img_bgr = cv2.imread('img/pills.png')
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-
+    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV) # Para distinguir cápsulas bicolor
+    
     imshow(img_rgb, color_img=True, title="Imagen original")
 
     # A
@@ -127,5 +207,9 @@ if __name__ == "__main__":
     # B
     pastillas = detectar_pastillas(img_gray, mask_cinta)
     imshow(pastillas, title="B - Pastillas")
+    
+    # C
+    etiquetas = [clasificar_pastilla(p['mask'], img_hsv) for p in pastillas]
+    imshow(etiquetas, title="C - Etiquetas")
     
     plt.show()
