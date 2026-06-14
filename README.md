@@ -12,7 +12,7 @@ Lujambio Valentin
 
 ## Contenido
 
-El TP se divide en dos problemas independientes, resueltos técnicas que vimos en clases de procesamiento digital de imágenes:
+El TP se divide en dos problemas independientes, resueltos con técnicas que vimos en clases de procesamiento de imágenes (PDI):
 
 - **[Problema 1](README_problema_1.md)** — Detección y clasificación de pastillas sobre una cinta transportadora industrial.
 - **[Problema 2](README_problema_2.md)** — Detección de placas patente y segmentación de sus caracteres a partir de imágenes de vehículos.
