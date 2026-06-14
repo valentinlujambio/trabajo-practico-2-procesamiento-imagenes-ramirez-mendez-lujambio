@@ -5,6 +5,7 @@ TP2 - PDI TUIA 2026 C1
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import Counter
 
 
 def imshow(img, new_fig=True, title=None, color_img=False, blocking=False,
@@ -192,6 +193,43 @@ def clasificar_pastilla(mask, img_hsv):
     return 'RB' # Redonda blanca
 
 
+NOMBRES = {
+    'RB': 'Redonda blanca',
+    'RR': 'Redonda rosa',
+    'CC': 'Cuadrada blanca',
+    'CA': 'Capsula amarilla',
+    'CB': 'Capsula azul-blanca',
+    'XX': 'Desconocida',
+}
+
+
+def generar_salida(img_rgb, pastillas, etiquetas, out_path='salida_pastillas.png'):
+    cuenta = Counter(etiquetas)
+    print("\n=== Resultado de la clasificación ===")
+    total = 0
+    for sigla, n in sorted(cuenta.items()):
+        nombre = NOMBRES.get(sigla, sigla)
+        print(f"  {sigla} ({nombre:<22}): {n}")
+        total += n
+    print(f"  {'TOTAL':<28}: {total}")
+
+    # Dibujar etiquetas con id por tipo (RR1, RR2, ...)
+    contadores = {}
+    out = img_rgb.copy()
+    for p, sigla in zip(pastillas, etiquetas):
+        contadores[sigla] = contadores.get(sigla, 0) + 1
+        etq = f"{sigla}{contadores[sigla]}"
+        x, y, w, h = p['bbox']
+        cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(out, etq, (x, max(0, y - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
+
+    cv2.imwrite(out_path, cv2.cvtColor(out, cv2.COLOR_RGB2BGR))
+    imshow(out, color_img=True, title="Pastillas clasificadas")
+    print(f"\nImagen guardada en: {out_path}")
+    return out
+
+
 if __name__ == "__main__":
     img_bgr = cv2.imread('img/pills.png')
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -211,5 +249,8 @@ if __name__ == "__main__":
     # C
     etiquetas = [clasificar_pastilla(p['mask'], img_hsv) for p in pastillas]
     imshow(etiquetas, title="C - Etiquetas")
+    
+    # D - reporte
+    generar_salida(img_rgb, pastillas, etiquetas)
     
     plt.show()
