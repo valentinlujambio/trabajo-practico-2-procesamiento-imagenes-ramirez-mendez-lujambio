@@ -27,12 +27,9 @@ def imshow(img, new_fig=True, title=None, color_img=False, blocking=False,
       plt.show(block=blocking)
 
 
-# =============================================================================
-# ETAPA A - Segmentación del ROI de la cinta transportadora
-# =============================================================================
 def segmentar_cinta(img_gray):
     """
-    Devuelve una máscara del área de la cinta.
+    Punto A: Devuelve una máscara del área de la cinta.
     """
     # Umbralizamos la cinta, dejandola blanca
     _, th = cv2.threshold(img_gray, 0, 255,
@@ -66,20 +63,69 @@ def segmentar_cinta(img_gray):
     return mask, (x0, y0, x1 - x0, y1 - y0)
 
 
+def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=None):
+    """
+    Punto B: Detecta pastillas combinando brillo (V) y saturación (S). Devolvemos una lista de pastillas con sus caracteristicas.
+    """
+    if img_hsv is None:
+        raise ValueError("Se necesita img_hsv para distinguir cápsulas bicolor")
 
-# =============================================================================
-# Main
-# =============================================================================
+    V = img_hsv[:, :, 2]
+    S = img_hsv[:, :, 1]
+
+    # Umbralizamos V (claros) y S (saturados) con Otsu independiente
+    _, th_v = cv2.threshold(V, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, th_s = cv2.threshold(S, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    th = cv2.bitwise_or(th_v, th_s)
+
+    # Restringir a la cinta (descarta engranajes/metal exterior)
+    th = cv2.bitwise_and(th, mask_cinta)
+
+    # Aplicamos opening y closing para limpiar el ruido
+    k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    cleaned = cv2.morphologyEx(th, cv2.MORPH_OPEN, k_open)
+    k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, k_close)
+
+    # Nos quedamos con los componentes conectados
+    num, labels, stats, centroids = cv2.connectedComponentsWithStats(
+        cleaned, connectivity=8)
+
+    pastillas = []
+    for i in range(1, num):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area < area_min:
+            continue
+        x = stats[i, cv2.CC_STAT_LEFT]
+        y = stats[i, cv2.CC_STAT_TOP]
+        w = stats[i, cv2.CC_STAT_WIDTH]
+        h = stats[i, cv2.CC_STAT_HEIGHT]
+        # Descartamos tiras finas (artefactos del borde de la cinta que nos dan problemas)
+        if min(w, h) < min_dim:
+            continue
+        mask = np.uint8(labels == i) * 255
+        pastillas.append({
+            'bbox': (x, y, w, h),
+            'mask': mask,
+            'area': int(area),
+            'centroid': (float(centroids[i, 0]), float(centroids[i, 1])),
+        })
+    return pastillas, cleaned
+
+
 if __name__ == "__main__":
     img_bgr = cv2.imread('img/pills.png')
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 
     imshow(img_rgb, color_img=True, title="Imagen original")
 
     # A
     mask_cinta, bbox_cinta = segmentar_cinta(img_gray)
     imshow(mask_cinta, title="A - Máscara de la cinta")
+    
+    # B
+    pastillas = detectar_pastillas(img_gray, mask_cinta)
+    imshow(pastillas, title="B - Pastillas")
     
     plt.show()
