@@ -78,7 +78,7 @@ def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=
     _, th_s = cv2.threshold(S, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     th = cv2.bitwise_or(th_v, th_s)
 
-    # Restringir a la cinta (descarta engranajes/metal exterior)
+    # Restringir a la cinta
     th = cv2.bitwise_and(th, mask_cinta)
 
     # Aplicamos opening y closing para limpiar el ruido
