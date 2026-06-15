@@ -74,5 +74,5 @@ if __name__ == "__main__":
     print(f"Procesando {len(paths)} imágenes...")
     for p in paths:
         print(f"\n>>> {os.path.basename(p)}")
-        procesar_imagen(p, debug=False)
+        procesar_imagen(p, debug=True)
     plt.show()
