@@ -56,18 +56,12 @@ def _detectar_chars(placa_bgr, debug=False):
                         interpolation=cv2.INTER_CUBIC)
 
     gray = cv2.cvtColor(placa, cv2.COLOR_BGR2GRAY)
-    # CLAHE: realza contraste local en placas oscuras / mal iluminadas
+    # Realizamos un CLAHE para mejorar el contraste de la imagen
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     gray_eq = clahe.apply(gray)
 
-    # AYUDA #2: varias configuraciones de adaptiveThreshold + Otsu (fallback)
-    configs = [
-        ('gauss', 21, 8),
-        ('gauss', 31, 10),
-        ('gauss', 15, 6),
-        ('mean',  21, 8),
-        ('otsu',  0,  0),
-    ]
+    # Probamos varias configuraciones de adaptiveThreshold + Otsu (fallback)
+    configs = [('gauss', 21, 8), ('gauss', 31, 10), ('gauss', 15, 6), ('mean',  21, 8), ('otsu',  0,  0)]
     k_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
 
     mejor_cajas, mejor_th, mejor_score = [], None, -float('inf')
