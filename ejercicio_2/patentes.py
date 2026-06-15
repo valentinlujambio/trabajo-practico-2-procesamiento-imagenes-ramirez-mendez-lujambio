@@ -1,11 +1,15 @@
 """
-Ejercicio 2 - Detección de placas patente y segmentación de caracteres
+Ejercicio 2 - Detección de patentes y segmentación de caracteres
 TP2 - PDI TUIA 2026 C1
 """
 import glob
 import os
 import cv2
 import matplotlib.pyplot as plt
+
+
+from help_show import imshow
+from placa import detectar_patente
 
 # listado_patentes = [
 #     "img_1":"AG678UA",
@@ -23,10 +27,17 @@ import matplotlib.pyplot as plt
 # ]
 
 
-def procesar_imagen(path, debug=True):
+def procesar_imagen(path, debug=False):
     img_bgr = cv2.imread(path)
     if img_bgr is None:
         print(f"  [!] No se pudo leer {path}")
+        return
+    
+    patente = detectar_patente(img_bgr, debug=False)
+    if patente is None:
+        print(f"  [!] No se detectó patente en {os.path.basename(path)}")
+        if debug:
+            imshow(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), color_img=True, title=f"{os.path.basename(path)} - sin detección")
         return
 
 
@@ -35,5 +46,5 @@ if __name__ == "__main__":
     print(f"Procesando {len(paths)} imágenes...")
     for p in paths:
         print(f"\n>>> {os.path.basename(p)}")
-        procesar_imagen(p, debug=True)
+        procesar_imagen(p, debug=False)
     plt.show()
