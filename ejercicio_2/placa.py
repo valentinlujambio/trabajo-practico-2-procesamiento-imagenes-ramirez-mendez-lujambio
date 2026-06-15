@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from help_show import imshow
+from caracteres import _detectar_chars
 
 def _hay_azul_arriba(hsv, fila, ch):
     """Corroboramos si hay franja azul arriba de la fila de caracteres"""
@@ -153,9 +154,28 @@ def detectar_patente(img_bgr, debug=False):
     ch = float(np.median([b[3] for b in fila]))
     row_w = cx1 - cx0
 
-    px = int(0.05 * row_w)
-    x = max(0, cx0 - px); y = max(0, cy0 - int(0.70 * ch))
-    x1 = min(img.shape[1], cx1 + px); y1 = min(img.shape[0], cy1 + int(0.40 * ch))
+    mx = int(0.12 * row_w + ch)
+    my_top = int(0.90 * ch)                 # franja azul arriba
+    my_bot = int(0.55 * ch)
+    bx0 = max(0, cx0 - mx); by0 = max(0, cy0 - my_top)
+    bx1 = min(img.shape[1], cx1 + mx); by1 = min(img.shape[0], cy1 + my_bot)
+    crop = img[by0:by1, bx0:bx1]
+
+    # Comparamos con la geometría de la patente para mas precision
+    cajas, _ = _detectar_chars(crop)
+    if len(cajas) >= 4:
+        dx0 = min(c[0] for c in cajas); dy0 = min(c[1] for c in cajas)
+        dx1 = max(c[0] + c[2] for c in cajas); dy1 = max(c[1] + c[3] for c in cajas)
+        chh = dy1 - dy0
+        px = max(int(0.06 * (dx1 - dx0)), int(0.3 * chh))
+        py_top = int(0.75 * chh)
+        py_bot = int(0.40 * chh)
+        x = bx0 + max(0, dx0 - px); y = by0 + max(0, dy0 - py_top)
+        x1 = bx0 + dx1 + px; y1 = by0 + dy1 + py_bot
+    else:
+        px = int(0.05 * row_w)
+        x = max(0, cx0 - px); y = max(0, cy0 - int(0.70 * ch))
+        x1 = min(img.shape[1], cx1 + px); y1 = min(img.shape[0], cy1 + int(0.40 * ch))
 
     if debug:
         vis = img.copy()

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 from help_show import imshow
 from placa import detectar_patente
+from caracteres import segmentar_caracteres
 
 # listado_patentes = [
 #     "img_1":"AG678UA",
@@ -33,12 +34,39 @@ def procesar_imagen(path, debug=False):
         print(f"  [!] No se pudo leer {path}")
         return
     
-    patente = detectar_patente(img_bgr, debug=False)
+    patente, bbox = detectar_patente(img_bgr, debug=False)
     if patente is None:
         print(f"  [!] No se detectó patente en {os.path.basename(path)}")
         if debug:
             imshow(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), color_img=True, title=f"{os.path.basename(path)} - sin detección")
         return
+    chars, patente_resized = segmentar_caracteres(patente, debug=False)
+    print(f"  patente detectada en bbox {bbox} - {len(chars)} caracteres")
+    
+    if debug:
+        fig = plt.figure(figsize=(12, 6))
+        fig.suptitle(os.path.basename(path))
+
+        vis = img_bgr.copy()
+        x, y, w, h = bbox
+        cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 3)
+        plt.subplot(2, 1, 1)
+        plt.imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))
+        plt.title("Original con patente detectada")
+        plt.xticks([]); plt.yticks([])
+
+        vis2 = patente_resized.copy()
+        scale = patente_resized.shape[0] / float(patente.shape[0])
+        for (cx, cy, cw, ch) in chars:
+            rx = int(cx * scale); ry = int(cy * scale)
+            rw = int(cw * scale); rh = int(ch * scale)
+            cv2.rectangle(vis2, (rx, ry), (rx + rw, ry + rh), (0, 255, 0), 2)
+        plt.subplot(2, 1, 2)
+        plt.imshow(cv2.cvtColor(vis2, cv2.COLOR_BGR2RGB))
+        plt.title(f"patente - {len(chars)} caracteres segmentados")
+        plt.xticks([]); plt.yticks([])
+        plt.tight_layout()
+        plt.show(block=False)
 
 
 if __name__ == "__main__":
