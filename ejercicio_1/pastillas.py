@@ -243,14 +243,14 @@ if __name__ == "__main__":
     imshow(mask_cinta, title="A - Máscara de la cinta")
     
     # B
-    pastillas = detectar_pastillas(img_gray, mask_cinta)
-    imshow(pastillas, title="B - Pastillas")
-    
+    pastillas, cleaned = detectar_pastillas(img_gray, mask_cinta, img_hsv=img_hsv)
+    imshow(cleaned, title="B - Pastillas detectadas (binaria)")
+
     # C
     etiquetas = [clasificar_pastilla(p['mask'], img_hsv) for p in pastillas]
-    imshow(etiquetas, title="C - Etiquetas")
-    
+
+
     # D - reporte
-    generar_salida(img_rgb, pastillas, etiquetas)
+    generar_salida(img_rgb, pastillas, etiquetas)   
     
     plt.show()
