@@ -1,6 +1,9 @@
 """
 Ejercicio 1 - Detección y clasificación de pastillas
 TP2 - PDI TUIA 2026 C1
+
+Versión con MODO DEBUG: poné DEBUG = True en el __main__ para ver
+todas las salidas intermedias de cada etapa (A, B, C).
 """
 import cv2
 import numpy as np
@@ -28,7 +31,31 @@ def imshow(img, new_fig=True, title=None, color_img=False, blocking=False,
       plt.show(block=blocking)
 
 
-def segmentar_cinta(img_gray):
+def _panel(items, suptitle):
+    """
+    [DEBUG] Muestra varias imágenes intermedias en una sola figura.
+    items: lista de tuplas (imagen, titulo, es_color)
+    """
+    n = len(items)
+    cols = min(n, 3)
+    rows = int(np.ceil(n / cols))
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    axes = np.array(axes).reshape(-1)
+    for ax, (im, ttl, es_color) in zip(axes, items):
+        if es_color:
+            ax.imshow(im)
+        else:
+            ax.imshow(im, cmap='gray')
+        ax.set_title(ttl, fontsize=10)
+        ax.set_xticks([]); ax.set_yticks([])
+    for ax in axes[n:]:           # apagar ejes sobrantes
+        ax.axis('off')
+    fig.suptitle(suptitle, fontsize=13, fontweight='bold')
+    fig.tight_layout()
+    plt.show(block=False)
+
+
+def segmentar_cinta(img_gray, debug=False):
     """
     Punto A: Devuelve una máscara del área de la cinta.
     """
@@ -61,10 +88,26 @@ def segmentar_cinta(img_gray):
     x1 = x + w - pad; y1 = y + h - pad
     mask = np.zeros_like(img_gray, dtype=np.uint8)
     mask[y0:y1, x0:x1] = 255
+
+    if debug:
+        comp = np.uint8(labels == idx) * 255  # componente elegido aislado
+        print(f"[A] segmentar_cinta: {num - 1} componentes detectados | "
+              f"elegido idx={idx} area={int(areas.max())} "
+              f"bbox=({x},{y},{w},{h}) pad={pad}")
+        _panel([
+            (img_gray, "1. Entrada (gray)", False),
+            (th,       "2. Otsu invertido (cinta blanca)", False),
+            (opened,   "3. Apertura RECT 80x30", False),
+            (closed,   "4. Cierre RECT 55x55", False),
+            (comp,     "5. Componente mayor = cinta", False),
+            (mask,     "6. Mascara final (con pad)", False),
+        ], "A - segmentar_cinta")
+
     return mask, (x0, y0, x1 - x0, y1 - y0)
 
 
-def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=None):
+def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25,
+                       img_hsv=None, debug=False):
     """
     Punto B: Detecta pastillas combinando brillo (V) y saturación (S). Devolvemos una lista de pastillas con sus caracteristicas.
     """
@@ -80,29 +123,32 @@ def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=
     th = cv2.bitwise_or(th_v, th_s)
 
     # Restringir a la cinta
-    th = cv2.bitwise_and(th, mask_cinta)
+    th_belt = cv2.bitwise_and(th, mask_cinta)
 
     # Aplicamos opening y closing para limpiar el ruido
     k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    cleaned = cv2.morphologyEx(th, cv2.MORPH_OPEN, k_open)
+    opened = cv2.morphologyEx(th_belt, cv2.MORPH_OPEN, k_open)
     k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, k_close)
+    cleaned = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, k_close)
 
     # Nos quedamos con los componentes conectados
     num, labels, stats, centroids = cv2.connectedComponentsWithStats(
         cleaned, connectivity=8)
 
     pastillas = []
+    descartados = []
     for i in range(1, num):
         area = stats[i, cv2.CC_STAT_AREA]
-        if area < area_min:
-            continue
         x = stats[i, cv2.CC_STAT_LEFT]
         y = stats[i, cv2.CC_STAT_TOP]
         w = stats[i, cv2.CC_STAT_WIDTH]
         h = stats[i, cv2.CC_STAT_HEIGHT]
+        if area < area_min:
+            descartados.append((i, int(area), w, h, "area<area_min"))
+            continue
         # Descartamos tiras finas (artefactos del borde de la cinta que nos dan problemas)
         if min(w, h) < min_dim:
+            descartados.append((i, int(area), w, h, "min(w,h)<min_dim"))
             continue
         mask = np.uint8(labels == i) * 255
         pastillas.append({
@@ -111,6 +157,29 @@ def detectar_pastillas(img_gray, mask_cinta, area_min=1500, min_dim=25, img_hsv=
             'area': int(area),
             'centroid': (float(centroids[i, 0]), float(centroids[i, 1])),
         })
+
+    if debug:
+        overlay = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB)
+        for p in pastillas:
+            x, y, w, h = p['bbox']
+            cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        print(f"[B] detectar_pastillas: {num - 1} componentes | "
+              f"aceptados={len(pastillas)} descartados={len(descartados)}")
+        for d in descartados:
+            print(f"      descartado idx={d[0]} area={d[1]} "
+                  f"wh=({d[2]},{d[3]}) motivo={d[4]}")
+        _panel([
+            (V,        "1. Canal V (brillo)", False),
+            (S,        "2. Canal S (saturacion)", False),
+            (th_v,     "3. Otsu(V)", False),
+            (th_s,     "4. Otsu(S)", False),
+            (th,       "5. V OR S", False),
+            (th_belt,  "6. AND con mascara cinta", False),
+            (opened,   "7. Apertura ELLIPSE 3x3", False),
+            (cleaned,  "8. Cierre ELLIPSE 11x11", False),
+            (overlay,  "9. Detecciones aceptadas", True),
+        ], "B - detectar_pastillas")
+
     return pastillas, cleaned
 
 
@@ -166,7 +235,7 @@ def _features_color(img_hsv, mask):
     }
 
 
-def clasificar_pastilla(mask, img_hsv):
+def clasificar_pastilla(mask, img_hsv, debug=False, etq=""):
     """
     Punto C: Clasifica la pastilla segun sus caracteristicas.
     """
@@ -174,23 +243,33 @@ def clasificar_pastilla(mask, img_hsv):
     f = _features_forma(mask)
     c = _features_color(img_hsv, mask)
     if f is None:
+        if debug:
+            print(f"  [{etq}] sin contorno -> XX")
         return 'XX'
 
     # En base a la forma, después vemos el color
     es_capsula = (f['aspect'] >= 1.7) or (f['circularity'] < 0.65)
     if es_capsula:
         if c['pct_blue'] > 0.05:
-            return 'CB' # Capsula bicolor azul-blanca
-        if c['pct_yellow'] > 0.20:
-            return 'CA' # Capsula amarilla
-        return 'CB'
+            sigla = 'CB'    # Capsula bicolor azul-blanca
+        elif c['pct_yellow'] > 0.20:
+            sigla = 'CA'    # Capsula amarilla
+        else:
+            sigla = 'CB'
+    elif f['circularity'] < 0.88:
+        sigla = 'CC'        # Cuadrada blanca
+    elif c['pct_pink'] > 0.15:
+        sigla = 'RR'        # Redonda rosa
+    else:
+        sigla = 'RB'        # Redonda blanca
 
-    if f['circularity'] < 0.88:
-        return 'CC' # Cuadrada blanca
-
-    if c['pct_pink'] > 0.15:
-        return 'RR' # Redonda rosa
-    return 'RB' # Redonda blanca
+    if debug:
+        print(f"  [{etq}] circ={f['circularity']:.3f} aspect={f['aspect']:.2f} "
+              f"extent={f['extent']:.3f} | "
+              f"blue={c['pct_blue']:.2f} yellow={c['pct_yellow']:.2f} "
+              f"pink={c['pct_pink']:.2f} white={c['pct_white']:.2f} "
+              f"| capsula={es_capsula} -> {sigla}")
+    return sigla
 
 
 NOMBRES = {
@@ -231,26 +310,34 @@ def generar_salida(img_rgb, pastillas, etiquetas, out_path='salida_pastillas.png
 
 
 if __name__ == "__main__":
+    DEBUG = True   # <-- poné False para volver al modo normal
+
     img_bgr = cv2.imread('img/pills.png')
+    if img_bgr is None:
+        raise FileNotFoundError("No se encontró 'img/pills.png'")
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV) # Para distinguir cápsulas bicolor
-    
-    imshow(img_rgb, color_img=True, title="Imagen original")
+    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)  # Para distinguir cápsulas bicolor
 
-    # A
-    mask_cinta, bbox_cinta = segmentar_cinta(img_gray)
-    imshow(mask_cinta, title="A - Máscara de la cinta")
-    
-    # B
-    pastillas, cleaned = detectar_pastillas(img_gray, mask_cinta, img_hsv=img_hsv)
-    imshow(cleaned, title="B - Pastillas detectadas (binaria)")
+    if DEBUG:
+        imshow(img_rgb, color_img=True, title="Imagen original")
 
-    # C
-    etiquetas = [clasificar_pastilla(p['mask'], img_hsv) for p in pastillas]
+    # A - segmentación de la cinta
+    mask_cinta, bbox_cinta = segmentar_cinta(img_gray, debug=DEBUG)
 
+    # B - detección de pastillas
+    pastillas, cleaned = detectar_pastillas(
+        img_gray, mask_cinta, img_hsv=img_hsv, debug=DEBUG)
+
+    # C - clasificación
+    if DEBUG:
+        print("\n=== Features por pastilla (orden de detección) ===")
+    etiquetas = []
+    for k, p in enumerate(pastillas, start=1):
+        etiquetas.append(
+            clasificar_pastilla(p['mask'], img_hsv, debug=DEBUG, etq=f"#{k}"))
 
     # D - reporte
-    generar_salida(img_rgb, pastillas, etiquetas)   
-    
-    plt.show()
+    generar_salida(img_rgb, pastillas, etiquetas)
+
+    plt.show()   # bloquea al final para que queden abiertas todas las figuras

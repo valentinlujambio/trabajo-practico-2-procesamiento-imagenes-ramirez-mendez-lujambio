@@ -1,8 +1,19 @@
 import cv2
 import numpy as np
+import sys
+import os
 
 from help_show import imshow
 from caracteres import _detectar_chars
+
+
+def _dibujar_cajas(img, cajas, color=(0, 255, 0), grosor=1):
+    """Devuelve una copia de img con las cajas dibujadas (solo para debug)."""
+    vis = img.copy()
+    for (x, y, w, h) in cajas:
+        cv2.rectangle(vis, (x, y), (x + w, y + h), color, grosor)
+    return vis
+
 
 def _hay_azul_arriba(hsv, fila, ch):
     """Corroboramos si hay franja azul arriba de la fila de caracteres"""
@@ -107,7 +118,7 @@ def _evaluar_filas(cajas):
     return resultados
 
 
-def _buscar_fila_patente(img):
+def _buscar_fila_patente(img, debug=False):
     """Busca en toda la imagen la fila de ~7 caracteres que mejor matchea la
     geometría de una patente Mercosur. Devolvemos la lista de cajas o []."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -116,14 +127,26 @@ def _buscar_fila_patente(img):
     Hp = img.shape[0]
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
+    if debug:
+        imshow(gray, title="2 - Escala de grises", blocking=True)
+        imshow(gray_eq, title="3 - CLAHE (mejora de contraste local)", blocking=True)
+
     k_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     mejor_fila, mejor_score = [], -float('inf')
-    for bs, C in [(21, 9), (31, 12), (15, 6)]:
+    for idx, (bs, C) in enumerate([(21, 9), (31, 12), (15, 6)]):
         th = cv2.adaptiveThreshold(
             gray_eq, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, bs, C)
+        if debug:
+            imshow(th, title=f"4.{idx + 1} - Umbral adaptativo (bs={bs}, C={C})", blocking=True)
         th = cv2.morphologyEx(th, cv2.MORPH_OPEN, k_open)
+        if debug:
+            imshow(th, title=f"5.{idx + 1} - Apertura morfológica (bs={bs})", blocking=True)
         cajas = _ccs_caracteres_like(th, Hp)
+        if debug:
+            vis = _dibujar_cajas(img, cajas, (0, 255, 255), 1)
+            imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), color_img=True,
+                   title=f"6.{idx + 1} - Candidatos tipo carácter ({len(cajas)})", blocking=True)
         for run, sc in _evaluar_filas(cajas):
             ch = float(np.median([b[3] for b in run]))
             sc += 8.0 * _blancura_fondo(hsv, run) # fondo blanco de la chapa
@@ -131,6 +154,11 @@ def _buscar_fila_patente(img):
                 sc += 2.5 # vemos la franja azul para estar mas seguros
             if sc > mejor_score:
                 mejor_score, mejor_fila = sc, run
+
+    if debug and mejor_fila:
+        vis = _dibujar_cajas(img, mejor_fila, (0, 255, 0), 2)
+        imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), color_img=True,
+               title=f"7 - Mejor fila encontrada (score={mejor_score:.2f})", blocking=True)
     return mejor_fila
 
 
@@ -143,8 +171,14 @@ def detectar_patente(img_bgr, debug=False):
     img = cv2.resize(img_bgr, (target_w, int(H0 * scale)),
                      interpolation=cv2.INTER_AREA)
 
-    fila = _buscar_fila_patente(img)
+    if debug:
+        imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), color_img=True,
+               title="1 - Imagen redimensionada", blocking=True)
+
+    fila = _buscar_fila_patente(img, debug=debug)
     if not fila:
+        if debug:
+            print("No se encontró ninguna fila de caracteres válida.")
         return None, None
 
     cx0 = min(b[0] for b in fila)
@@ -161,8 +195,17 @@ def detectar_patente(img_bgr, debug=False):
     bx1 = min(img.shape[1], cx1 + mx); by1 = min(img.shape[0], cy1 + my_bot)
     crop = img[by0:by1, bx0:bx1]
 
+    if debug and crop.size:
+        imshow(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), color_img=True,
+               title="8 - Región recortada para refinar", blocking=True)
+
     # Comparamos con la geometría de la patente para mas precision
     cajas, _ = _detectar_chars(crop)
+    if debug and len(cajas):
+        vis = _dibujar_cajas(crop, cajas, (255, 0, 0), 1)
+        imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), color_img=True,
+               title=f"9 - Caracteres refinados sobre el crop ({len(cajas)})", blocking=True)
+
     if len(cajas) >= 4:
         dx0 = min(c[0] for c in cajas); dy0 = min(c[1] for c in cajas)
         dx1 = max(c[0] + c[2] for c in cajas); dy1 = max(c[1] + c[3] for c in cajas)
@@ -184,9 +227,33 @@ def detectar_patente(img_bgr, debug=False):
                           (b[0] + b[2], b[1] + b[3]), (0, 255, 0), 1)
         cv2.rectangle(vis, (x, y), (x1, y1), (0, 0, 255), 2)
         imshow(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), color_img=True,
-               title="A - fila de caracteres + bbox patente")
+               title="10 - BBox final de la patente", blocking=True)
 
     x0o = int(x / scale); y0o = int(y / scale)
     x1o = int(x1 / scale); y1o = int(y1 / scale)
     patente = img_bgr[y0o:y1o, x0o:x1o].copy()
     return patente, (x0o, y0o, x1o - x0o, y1o - y0o)
+
+
+if __name__ == "__main__":
+    # Uso: python detectar_patente.py <ruta_imagen>
+    ruta = sys.argv[1] if len(sys.argv) > 1 else "patente.jpg"
+
+    if not os.path.exists(ruta):
+        print(f"No existe el archivo: {ruta}")
+        print("Uso: python detectar_patente.py <ruta_imagen>")
+        sys.exit(1)
+
+    img = cv2.imread(ruta)
+    if img is None:
+        print(f"No se pudo leer la imagen: {ruta}")
+        sys.exit(1)
+
+    patente, bbox = detectar_patente(img, debug=True)
+
+    if patente is None:
+        print("No se detectó ninguna patente.")
+    else:
+        print(f"Patente detectada. BBox (x, y, w, h): {bbox}")
+        imshow(cv2.cvtColor(patente, cv2.COLOR_BGR2RGB), color_img=True,
+               title="Resultado final - Patente recortada", blocking=True)
