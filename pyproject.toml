@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "TP2 PDI TUIA 2026 C1 - Soluciones (pastillas y patentes)"
 requires-python = ">=3.10"
 dependencies = [
-    "opencv-python>=4.9",
+    # headless: el build de Railway no trae las libs de GUI (libxcb, libGL) que
+    # pide `opencv-python`, y el repo no usa cv2.imshow (todo sale por matplotlib
+    # con backend Agg, ver `api/bridge.py`).
+    "opencv-python-headless>=4.9",
     "numpy>=1.26",
     "matplotlib>=3.8",
     # Capa HTTP (api/): expone las dos soluciones como microservicio.
