@@ -1,4 +1,7 @@
 venv/
 *.pyc
-uv.lock
 .venv/
+
+# uv.lock SI se commitea: Railpack solo usa el provider de uv cuando encuentra
+# pyproject.toml + uv.lock. Sin el lock no instala las dependencias y el deploy
+# arranca sin uvicorn.
