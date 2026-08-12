@@ -7,4 +7,19 @@ dependencies = [
     "opencv-python>=4.9",
     "numpy>=1.26",
     "matplotlib>=3.8",
+    # Capa HTTP (api/): expone las dos soluciones como microservicio.
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0",
 ]
+
+[project.scripts]
+tp2-api = "api.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["api"]

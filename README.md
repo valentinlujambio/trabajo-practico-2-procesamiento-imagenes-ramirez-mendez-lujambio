@@ -69,6 +69,51 @@ uv run --directory ejercicio_2 python patentes.py
 > 💡 Cada script tiene un **modo debug** que muestra todas las etapas
 > intermedias del procesamiento. Está documentado en el README de cada problema.
 
+## 🌐 API HTTP (`api/`)
+
+Las dos soluciones están además expuestas como **microservicio FastAPI**, para
+poder consumirlas desde otra aplicación en vez de correr un script que abre
+ventanas de matplotlib.
+
+El código de visión **no se modificó**: `api/bridge.py` agrega `ejercicio_1/` y
+`ejercicio_2/` al `sys.path`, fija el backend `Agg` de matplotlib (en un
+servidor no hay display) y reexporta las funciones. Los endpoints solo orquestan
+y serializan.
+
+```bash
+uv sync
+uv run uvicorn api.main:app --reload --port 8001
+# docs interactivas en http://localhost:8001/docs
+```
+
+| Método | Endpoint | Qué hace |
+|---|---|---|
+| `GET` | `/health` | Health check. |
+| `GET` | `/pills/samples` · `/plates/samples` | Imágenes de ejemplo servidas por la API. |
+| `GET` | `/{pills\|plates}/samples/{id}/image` | La imagen de ejemplo en crudo. |
+| `POST` | `/{pills\|plates}/samples/{id}/analyze` | Procesa una muestra. |
+| `POST` | `/{pills\|plates}/analyze` | Procesa una imagen subida (`multipart/form-data`). |
+
+La respuesta trae el resultado **y el paso a paso**: cada etapa intermedia viene
+como imagen en `data:` URL, así quien consume la API puede mostrar —y auditar—
+cómo se llegó al número.
+
+```jsonc
+{
+  "sample": { "id": "img_1", "label": "Vehiculo 1", "expected": "AG678UA" },
+  "ms": 1536,
+  "steps": [{ "id": "located", "title": "…", "caption": "…", "image": "data:image/jpeg;base64,…" }],
+  "result": { "detected": true, "bbox": [520, 611, 141, 60], "chars": 7 }
+}
+```
+
+### Variables de entorno
+
+Ver `.env.example`. La relevante es **`CORS_ORIGINS`**: lista de orígenes
+autorizados a consumir la API desde el navegador, separada por comas o en JSON.
+Se normaliza sin barra final (el navegador manda el header `Origin` sin barra).
+Si queda vacía, no se habilita ningún origen cruzado.
+
 ## 📁 Estructura del repositorio
 
 ```
@@ -83,6 +128,11 @@ tp_2/
 │   ├── caracteres.py     → segmentación de caracteres
 │   ├── img/              → img_1.jpg … img_12.jpg
 │   └── README.md
+├── api/                  → microservicio FastAPI sobre los dos ejercicios
+│   ├── main.py           → app y CORS por variable de entorno
+│   ├── bridge.py         → reexporta el código de los ejercicios sin tocarlo
+│   ├── imaging.py        → serialización de las imágenes del paso a paso
+│   └── routes/           → pills.py · plates.py
 ├── assets/               → imágenes de los pasos (para los README)
 └── README.md             → este archivo
 ```
